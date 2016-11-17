@@ -179,35 +179,38 @@ function createGist(token, callback) {
 
 function gitRemoteAdd(id, username, token, callback) {
   if (username) {
-    gitRemoteAddHttps(id, username, token, callback);
+    queue(1)
+      .defer(gitConfigCredential)
+      .defer(writeCredentialFile, username, token)
+      .defer(gitRemoteAddHttps, id)
+      .await(callback);
   } else {
     gitRemoteAddGit(id, callback);
   }
 }
 
-function gitRemoteAddHttps(id, username, token, callback) {
+function gitConfigCredential(callback) {
   child.exec("git config credential.helper \"store --file .git/credential-store\"", function(error, stdout, stderr) {
     if (!error && stderr) process.stderr.write(stderr), error = new Error("git config failed.");
     if (!error && stdout) process.stdout.write(stdout);
+    callback(error);
+  });
+}
 
-    if (error) {
-      callback(error);
-    } else {
-      var credentialFilePath = path.join(process.env.PWD, ".git", "credential-store");
-      var credential = "https://" + username + ":" + token + "@gist.github.com";
-      fs.writeFile(credentialFilePath, credential, {mode: parseInt("0600", 8)}, function(error) {
-        if (error) {
-          callback(error);
-        } else {
-          var remoteUrl = "https://gist.github.com/" + id + ".git";
-          child.exec("git remote add --track master " + quote.single(argv.remote) + " " + remoteUrl, function(error, stdout, stderr) {
-            if (!error && stderr) process.stderr.write(stderr), error = new Error("git remote failed.");
-            if (!error && stdout) process.stdout.write(stdout);
-            callback(error);
-          });
-        }
-      });
-    }
+function writeCredentialFile(username, token, callback) {
+  var credentialFilePath = path.join(process.env.PWD, ".git", "credential-store");
+  var credential = "https://" + username + ":" + token + "@gist.github.com";
+  fs.writeFile(credentialFilePath, credential, {mode: parseInt("0600", 8)}, function(error) {
+    callback(error)
+  });
+}
+
+function gitRemoteAddHttps(id, callback) {
+  var remoteUrl = "https://gist.github.com/" + id + ".git";
+  child.exec("git remote add --track master " + quote.single(argv.remote) + " " + remoteUrl, function(error, stdout, stderr) {
+    if (!error && stderr) process.stderr.write(stderr), error = new Error("git remote failed.");
+    if (!error && stdout) process.stdout.write(stdout);
+    callback(error);
   });
 }
 
